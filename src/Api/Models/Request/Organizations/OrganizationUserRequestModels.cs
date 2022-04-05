@@ -94,6 +94,7 @@ namespace Bit.Api.Models.Request.Organizations
     public class OrganizationUserResetPasswordEnrollmentRequestModel
     {
         public string ResetPasswordKey { get; set; }
+        public string MasterPasswordHash { get; set; }
     }
 
     public class OrganizationUserBulkRequestModel
