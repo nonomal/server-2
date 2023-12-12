@@ -1,84 +1,87 @@
-﻿using System;
-using System.Globalization;
+﻿using System.Globalization;
 using Bit.Core.Settings;
 using Bit.Core.Utilities;
-using Bit.Icons.Services;
+using Bit.Icons.Extensions;
 using Bit.SharedWeb.Utilities;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Net.Http.Headers;
 
-namespace Bit.Icons
+namespace Bit.Icons;
+
+public class Startup
 {
-    public class Startup
+    public Startup(IWebHostEnvironment env, IConfiguration configuration)
     {
-        public Startup(IWebHostEnvironment env, IConfiguration configuration)
+        CultureInfo.DefaultThreadCurrentCulture = new CultureInfo("en-US");
+        Configuration = configuration;
+        Environment = env;
+    }
+
+    public IConfiguration Configuration { get; }
+    public IWebHostEnvironment Environment { get; }
+
+    public void ConfigureServices(IServiceCollection services)
+    {
+        // Options
+        services.AddOptions();
+
+        // Settings
+        var globalSettings = services.AddGlobalSettingsServices(Configuration, Environment);
+        var iconsSettings = new IconsSettings();
+        ConfigurationBinder.Bind(Configuration.GetSection("IconsSettings"), iconsSettings);
+        services.AddSingleton(s => iconsSettings);
+
+        // Http client
+        services.ConfigureHttpClients();
+
+        // Add HtmlParser
+        services.AddHtmlParsing();
+
+        // Cache
+        services.AddMemoryCache(options =>
         {
-            CultureInfo.DefaultThreadCurrentCulture = new CultureInfo("en-US");
-            Configuration = configuration;
-            Environment = env;
+            options.SizeLimit = iconsSettings.CacheSizeLimit;
+        });
+
+        // Services
+        services.AddServices();
+
+        // Mvc
+        services.AddMvc();
+    }
+
+    public void Configure(
+        IApplicationBuilder app,
+        IWebHostEnvironment env,
+        IHostApplicationLifetime appLifetime,
+        GlobalSettings globalSettings)
+    {
+        app.UseSerilog(env, appLifetime, globalSettings);
+
+        // Add general security headers
+        app.UseMiddleware<SecurityHeadersMiddleware>();
+
+        // Forwarding Headers
+        if (globalSettings.SelfHosted)
+        {
+            app.UseForwardedHeaders(globalSettings);
         }
 
-        public IConfiguration Configuration { get; }
-        public IWebHostEnvironment Environment { get; }
-
-        public void ConfigureServices(IServiceCollection services)
+        if (env.IsDevelopment())
         {
-            // Options
-            services.AddOptions();
-
-            // Settings
-            var globalSettings = services.AddGlobalSettingsServices(Configuration, Environment);
-            var iconsSettings = new IconsSettings();
-            ConfigurationBinder.Bind(Configuration.GetSection("IconsSettings"), iconsSettings);
-            services.AddSingleton(s => iconsSettings);
-
-            // Cache
-            services.AddMemoryCache(options =>
-            {
-                options.SizeLimit = iconsSettings.CacheSizeLimit;
-            });
-
-            // Services
-            services.AddSingleton<IDomainMappingService, DomainMappingService>();
-            services.AddSingleton<IIconFetchingService, IconFetchingService>();
-
-            // Mvc
-            services.AddMvc();
+            app.UseDeveloperExceptionPage();
         }
 
-        public void Configure(
-            IApplicationBuilder app,
-            IWebHostEnvironment env,
-            IHostApplicationLifetime appLifetime,
-            GlobalSettings globalSettings)
+        app.Use(async (context, next) =>
         {
-            app.UseSerilog(env, appLifetime, globalSettings);
-
-            // Add general security headers
-            app.UseMiddleware<SecurityHeadersMiddleware>();
-
-            if (env.IsDevelopment())
+            context.Response.GetTypedHeaders().CacheControl = new CacheControlHeaderValue
             {
-                app.UseDeveloperExceptionPage();
-            }
+                Public = true,
+                MaxAge = TimeSpan.FromDays(7)
+            };
+            await next();
+        });
 
-            app.Use(async (context, next) =>
-            {
-                context.Response.GetTypedHeaders().CacheControl = new CacheControlHeaderValue
-                {
-                    Public = true,
-                    MaxAge = TimeSpan.FromDays(7)
-                };
-                await next();
-            });
-
-            app.UseRouting();
-            app.UseEndpoints(endpoints => endpoints.MapDefaultControllerRoute());
-        }
+        app.UseRouting();
+        app.UseEndpoints(endpoints => endpoints.MapDefaultControllerRoute());
     }
 }

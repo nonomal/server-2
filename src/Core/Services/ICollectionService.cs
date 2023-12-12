@@ -1,15 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Bit.Core.Entities;
+﻿using Bit.Core.Entities;
 using Bit.Core.Models.Data;
 
-namespace Bit.Core.Services
+namespace Bit.Core.Services;
+
+public interface ICollectionService
 {
-    public interface ICollectionService
-    {
-        Task SaveAsync(Collection collection, IEnumerable<SelectionReadOnly> groups = null, Guid? assignUserId = null);
-        Task DeleteAsync(Collection collection);
-        Task DeleteUserAsync(Collection collection, Guid organizationUserId);
-    }
+    Task SaveAsync(Collection collection, IEnumerable<CollectionAccessSelection> groups = null, IEnumerable<CollectionAccessSelection> users = null);
+    Task DeleteUserAsync(Collection collection, Guid organizationUserId);
+    [Obsolete("Pre-Flexible Collections logic.")]
+    Task<IEnumerable<Collection>> GetOrganizationCollectionsAsync(Guid organizationId);
 }

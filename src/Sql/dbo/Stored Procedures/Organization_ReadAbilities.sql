@@ -14,9 +14,12 @@ BEGIN
             0
         END AS [Using2fa],
         [UsersGetPremium],
+        [UseCustomPermissions],
         [UseSso],
         [UseKeyConnector],
+        [UseScim],
         [UseResetPassword],
+        [UsePolicies],
         [Enabled]
     FROM
         [dbo].[Organization]

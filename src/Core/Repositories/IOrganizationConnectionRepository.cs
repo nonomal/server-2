@@ -1,14 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Bit.Core.Entities;
+﻿using Bit.Core.Entities;
 using Bit.Core.Enums;
 
-namespace Bit.Core.Repositories
+namespace Bit.Core.Repositories;
+
+public interface IOrganizationConnectionRepository : IRepository<OrganizationConnection, Guid>
 {
-    public interface IOrganizationConnectionRepository : IRepository<OrganizationConnection, Guid>
-    {
-        Task<ICollection<OrganizationConnection>> GetByOrganizationIdTypeAsync(Guid organizationId, OrganizationConnectionType type);
-        Task<ICollection<OrganizationConnection>> GetEnabledByOrganizationIdTypeAsync(Guid organizationId, OrganizationConnectionType type);
-    }
+    Task<OrganizationConnection> GetByIdOrganizationIdAsync(Guid id, Guid organizationId);
+    Task<ICollection<OrganizationConnection>> GetByOrganizationIdTypeAsync(Guid organizationId, OrganizationConnectionType type);
+    Task<ICollection<OrganizationConnection>> GetEnabledByOrganizationIdTypeAsync(Guid organizationId, OrganizationConnectionType type);
 }

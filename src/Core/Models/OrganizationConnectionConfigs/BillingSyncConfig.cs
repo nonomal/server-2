@@ -1,10 +1,20 @@
-﻿using System;
+﻿namespace Bit.Core.Models.OrganizationConnectionConfigs;
 
-namespace Bit.Core.Models.OrganizationConnectionConfigs
+public class BillingSyncConfig : IConnectionConfig
 {
-    public class BillingSyncConfig
+    public string BillingSyncKey { get; set; }
+    public Guid CloudOrganizationId { get; set; }
+    public DateTime? LastLicenseSync { get; set; }
+
+    public bool Validate(out string exception)
     {
-        public string BillingSyncKey { get; set; }
-        public Guid CloudOrganizationId { get; set; }
+        if (string.IsNullOrWhiteSpace(BillingSyncKey))
+        {
+            exception = "Failed to get Billing Sync Key";
+            return false;
+        }
+
+        exception = "";
+        return true;
     }
 }

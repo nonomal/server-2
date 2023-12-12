@@ -1,110 +1,124 @@
-﻿using System;
-using System.Threading;
-using System.Threading.Tasks;
+﻿using Azure.Messaging.ServiceBus;
+using Azure.Messaging.ServiceBus.Administration;
 using Bit.Core.Enums;
 using Bit.Core.Repositories;
 using Bit.Core.Services;
 using Bit.Core.Settings;
 using Bit.Core.Utilities;
-using Microsoft.Azure.ServiceBus;
-using Microsoft.Azure.ServiceBus.Management;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace Bit.Core.HostedServices
+namespace Bit.Core.HostedServices;
+
+public class ApplicationCacheHostedService : IHostedService, IDisposable
 {
-    public class ApplicationCacheHostedService : IHostedService, IDisposable
+    private readonly InMemoryServiceBusApplicationCacheService _applicationCacheService;
+    private readonly IOrganizationRepository _organizationRepository;
+    protected readonly ILogger<ApplicationCacheHostedService> _logger;
+    private readonly ServiceBusClient _serviceBusClient;
+    private readonly ServiceBusReceiver _subscriptionReceiver;
+    private readonly ServiceBusAdministrationClient _serviceBusAdministrationClient;
+    private readonly string _subName;
+    private readonly string _topicName;
+    private CancellationTokenSource _cts;
+    private Task _executingTask;
+
+
+    public ApplicationCacheHostedService(
+        IApplicationCacheService applicationCacheService,
+        IOrganizationRepository organizationRepository,
+        ILogger<ApplicationCacheHostedService> logger,
+        GlobalSettings globalSettings)
     {
-        private readonly InMemoryServiceBusApplicationCacheService _applicationCacheService;
-        private readonly IOrganizationRepository _organizationRepository;
-        protected readonly ILogger<ApplicationCacheHostedService> _logger;
-        private readonly SubscriptionClient _subscriptionClient;
-        private readonly ManagementClient _managementClient;
-        private readonly string _subName;
-        private readonly string _topicName;
+        _topicName = globalSettings.ServiceBus.ApplicationCacheTopicName;
+        _subName = CoreHelpers.GetApplicationCacheServiceBusSubscriptionName(globalSettings);
+        _applicationCacheService = applicationCacheService as InMemoryServiceBusApplicationCacheService;
+        _organizationRepository = organizationRepository;
+        _logger = logger;
+        _serviceBusClient = new ServiceBusClient(globalSettings.ServiceBus.ConnectionString);
+        _subscriptionReceiver = _serviceBusClient.CreateReceiver(_topicName, _subName);
+        _serviceBusAdministrationClient = new ServiceBusAdministrationClient(globalSettings.ServiceBus.ConnectionString);
+    }
 
-        public ApplicationCacheHostedService(
-            IApplicationCacheService applicationCacheService,
-            IOrganizationRepository organizationRepository,
-            ILogger<ApplicationCacheHostedService> logger,
-            GlobalSettings globalSettings)
+    public virtual async Task StartAsync(CancellationToken cancellationToken)
+    {
+        try
         {
-            _topicName = globalSettings.ServiceBus.ApplicationCacheTopicName;
-            _subName = CoreHelpers.GetApplicationCacheServiceBusSubcriptionName(globalSettings);
-            _applicationCacheService = applicationCacheService as InMemoryServiceBusApplicationCacheService;
-            _organizationRepository = organizationRepository;
-            _logger = logger;
-            _managementClient = new ManagementClient(globalSettings.ServiceBus.ConnectionString);
-            _subscriptionClient = new SubscriptionClient(globalSettings.ServiceBus.ConnectionString,
-                _topicName, _subName);
-        }
-
-        public virtual async Task StartAsync(CancellationToken cancellationToken)
-        {
-            try
+            await _serviceBusAdministrationClient.CreateSubscriptionAsync(new CreateSubscriptionOptions(_topicName, _subName)
             {
-                await _managementClient.CreateSubscriptionAsync(new SubscriptionDescription(_topicName, _subName)
-                {
-                    DefaultMessageTimeToLive = TimeSpan.FromDays(14),
-                    LockDuration = TimeSpan.FromSeconds(30),
-                    EnableDeadLetteringOnFilterEvaluationExceptions = true,
-                    EnableDeadLetteringOnMessageExpiration = true,
-                }, new RuleDescription("default", new SqlFilter($"sys.Label != '{_subName}'")));
-            }
-            catch (MessagingEntityAlreadyExistsException) { }
-            _subscriptionClient.RegisterMessageHandler(ProcessMessageAsync,
-                new MessageHandlerOptions(ExceptionReceivedHandlerAsync)
-                {
-                    MaxConcurrentCalls = 2,
-                    AutoComplete = false,
-                });
-        }
-
-        public virtual async Task StopAsync(CancellationToken cancellationToken)
-        {
-            await _subscriptionClient.CloseAsync();
-            try
+                DefaultMessageTimeToLive = TimeSpan.FromDays(14),
+                LockDuration = TimeSpan.FromSeconds(30),
+                EnableDeadLetteringOnFilterEvaluationExceptions = true,
+                DeadLetteringOnMessageExpiration = true,
+            }, new CreateRuleOptions
             {
-                await _managementClient.DeleteSubscriptionAsync(_topicName, _subName, cancellationToken);
-            }
-            catch { }
+                Filter = new SqlRuleFilter($"sys.label != '{_subName}'")
+            }, cancellationToken);
         }
-
-        public virtual void Dispose()
+        catch (ServiceBusException e)
+        when (e.Reason == ServiceBusFailureReason.MessagingEntityAlreadyExists)
         { }
 
-        private async Task ProcessMessageAsync(Message message, CancellationToken cancellationToken)
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _executingTask = ExecuteAsync(_cts.Token);
+    }
+
+    public virtual async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await _subscriptionReceiver.CloseAsync(cancellationToken);
+        await _serviceBusClient.DisposeAsync();
+        _cts.Cancel();
+        try
         {
-            if (message.Label != _subName && _applicationCacheService != null)
+            await _serviceBusAdministrationClient.DeleteSubscriptionAsync(_topicName, _subName, cancellationToken);
+        }
+        catch { }
+        await _executingTask;
+    }
+
+    public virtual void Dispose()
+    { }
+
+    private async Task ExecuteAsync(CancellationToken cancellationToken)
+    {
+        await foreach (var message in _subscriptionReceiver.ReceiveMessagesAsync(cancellationToken))
+        {
+            try
             {
-                switch ((ApplicationCacheMessageType)message.UserProperties["type"])
-                {
-                    case ApplicationCacheMessageType.UpsertOrganizationAbility:
-                        var upsertedOrgId = (Guid)message.UserProperties["id"];
-                        var upsertedOrg = await _organizationRepository.GetByIdAsync(upsertedOrgId);
-                        if (upsertedOrg != null)
-                        {
-                            await _applicationCacheService.BaseUpsertOrganizationAbilityAsync(upsertedOrg);
-                        }
-                        break;
-                    case ApplicationCacheMessageType.DeleteOrganizationAbility:
-                        await _applicationCacheService.BaseDeleteOrganizationAbilityAsync(
-                            (Guid)message.UserProperties["id"]);
-                        break;
-                    default:
-                        break;
-                }
+                await ProcessMessageAsync(message, cancellationToken);
             }
-            if (!cancellationToken.IsCancellationRequested)
+            catch (Exception e)
             {
-                await _subscriptionClient.CompleteAsync(message.SystemProperties.LockToken);
+                _logger.LogError(e, "Error processing messages in ApplicationCacheHostedService");
             }
         }
+    }
 
-        private Task ExceptionReceivedHandlerAsync(ExceptionReceivedEventArgs args)
+    private async Task ProcessMessageAsync(ServiceBusReceivedMessage message, CancellationToken cancellationToken)
+    {
+        if (message.Subject != _subName && _applicationCacheService != null)
         {
-            _logger.LogError(args.Exception, "Message handler encountered an exception.");
-            return Task.FromResult(0);
+            switch ((ApplicationCacheMessageType)message.ApplicationProperties["type"])
+            {
+                case ApplicationCacheMessageType.UpsertOrganizationAbility:
+                    var upsertedOrgId = (Guid)message.ApplicationProperties["id"];
+                    var upsertedOrg = await _organizationRepository.GetByIdAsync(upsertedOrgId);
+                    if (upsertedOrg != null)
+                    {
+                        await _applicationCacheService.BaseUpsertOrganizationAbilityAsync(upsertedOrg);
+                    }
+                    break;
+                case ApplicationCacheMessageType.DeleteOrganizationAbility:
+                    await _applicationCacheService.BaseDeleteOrganizationAbilityAsync(
+                        (Guid)message.ApplicationProperties["id"]);
+                    break;
+                default:
+                    break;
+            }
+        }
+        if (!cancellationToken.IsCancellationRequested)
+        {
+            await _subscriptionReceiver.CompleteMessageAsync(message, cancellationToken);
         }
     }
 }

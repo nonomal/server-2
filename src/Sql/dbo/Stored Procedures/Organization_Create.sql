@@ -40,7 +40,19 @@
     @RevisionDate DATETIME2(7),
     @OwnersNotifiedOfAutoscaling DATETIME2(7),
     @MaxAutoscaleSeats INT,
-    @UseKeyConnector BIT = 0
+    @UseKeyConnector BIT = 0,
+    @UseScim BIT = 0,
+    @UseCustomPermissions BIT = 0,
+    @UseSecretsManager BIT = 0,
+    @Status TINYINT = 0,
+    @UsePasswordManager BIT = 1,
+    @SmSeats INT = null,
+    @SmServiceAccounts INT = null,
+    @MaxAutoscaleSmSeats INT= null,
+    @MaxAutoscaleSmServiceAccounts INT = null,
+    @SecretsManagerBeta BIT = 0,
+    @LimitCollectionCreationDeletion BIT = 1,
+    @AllowAdminAccessToAllCollectionItems BIT = 1
 AS
 BEGIN
     SET NOCOUNT ON
@@ -88,7 +100,19 @@ BEGIN
         [RevisionDate],
         [OwnersNotifiedOfAutoscaling],
         [MaxAutoscaleSeats],
-        [UseKeyConnector]
+        [UseKeyConnector],
+        [UseScim],
+        [UseCustomPermissions],
+        [UseSecretsManager],
+        [Status],
+        [UsePasswordManager],
+        [SmSeats],
+        [SmServiceAccounts],
+        [MaxAutoscaleSmSeats],
+        [MaxAutoscaleSmServiceAccounts],
+        [SecretsManagerBeta],
+        [LimitCollectionCreationDeletion],
+        [AllowAdminAccessToAllCollectionItems]
     )
     VALUES
     (
@@ -133,6 +157,18 @@ BEGIN
         @RevisionDate,
         @OwnersNotifiedOfAutoscaling,
         @MaxAutoscaleSeats,
-        @UseKeyConnector
+        @UseKeyConnector,
+        @UseScim,
+        @UseCustomPermissions,
+        @UseSecretsManager,
+        @Status,
+        @UsePasswordManager,
+        @SmSeats,
+        @SmServiceAccounts,
+        @MaxAutoscaleSmSeats,
+        @MaxAutoscaleSmServiceAccounts,
+        @SecretsManagerBeta,
+        @LimitCollectionCreationDeletion,
+        @AllowAdminAccessToAllCollectionItems
     )
 END

@@ -104,7 +104,7 @@ server {
   location = /captcha-connector.html {
     proxy_pass http://web:5000/captcha-connector.html;
   }
-  
+
   location = /captcha-mobile-connector.html {
     proxy_pass http://web:5000/captcha-mobile-connector.html;
   }
@@ -128,6 +128,12 @@ server {
 
   location /notifications/hub {
     proxy_pass http://notifications:5000/hub;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $http_connection;
+  }
+
+  location /notifications/anonymous-hub {
+    proxy_pass http://notifications:5000/anonymous-hub;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection $http_connection;
   }
@@ -166,6 +172,12 @@ server {
 {{#if EnableKeyConnector}}
   location /key-connector/ {
     proxy_pass http://key-connector:5000/;
+  }
+{{/if}}
+{{#if EnableScim}}
+
+  location /scim/ {
+    proxy_pass http://scim:5000/;
   }
 {{/if}}
 }

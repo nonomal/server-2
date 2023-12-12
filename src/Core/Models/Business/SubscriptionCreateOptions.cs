@@ -1,85 +1,152 @@
-﻿using System.Collections.Generic;
-using Bit.Core.Entities;
+﻿using Bit.Core.AdminConsole.Entities;
 using Stripe;
+using Plan = Bit.Core.Models.StaticStore.Plan;
 
-namespace Bit.Core.Models.Business
+namespace Bit.Core.Models.Business;
+
+public class OrganizationSubscriptionOptionsBase : SubscriptionCreateOptions
 {
-    public class OrganizationSubscriptionOptionsBase : Stripe.SubscriptionCreateOptions
+    public OrganizationSubscriptionOptionsBase(
+        Organization org,
+        Plan plan,
+        TaxInfo taxInfo,
+        int additionalSeats,
+        int additionalStorageGb,
+        bool premiumAccessAddon,
+        bool useSecretsManager,
+        int additionalSmSeats,
+        int additionalServiceAccounts)
     {
-        public OrganizationSubscriptionOptionsBase(Organization org, StaticStore.Plan plan, TaxInfo taxInfo, int additionalSeats, int additionalStorageGb, bool premiumAccessAddon)
+        Items = new List<SubscriptionItemOptions>();
+        Metadata = new Dictionary<string, string>
         {
-            Items = new List<SubscriptionItemOptions>();
-            Metadata = new Dictionary<string, string>
-            {
-                [org.GatewayIdField()] = org.Id.ToString()
-            };
+            [org.GatewayIdField()] = org.Id.ToString()
+        };
 
-            if (plan.StripePlanId != null)
-            {
-                Items.Add(new SubscriptionItemOptions
-                {
-                    Plan = plan.StripePlanId,
-                    Quantity = 1
-                });
-            }
+        AddPlanIdToSubscription(plan);
 
-            if (additionalSeats > 0 && plan.StripeSeatPlanId != null)
-            {
-                Items.Add(new SubscriptionItemOptions
-                {
-                    Plan = plan.StripeSeatPlanId,
-                    Quantity = additionalSeats
-                });
-            }
+        if (useSecretsManager)
+        {
+            AddSecretsManagerSeat(plan, additionalSmSeats);
+            AddServiceAccount(plan, additionalServiceAccounts);
+        }
 
-            if (additionalStorageGb > 0)
-            {
-                Items.Add(new SubscriptionItemOptions
-                {
-                    Plan = plan.StripeStoragePlanId,
-                    Quantity = additionalStorageGb
-                });
-            }
+        AddPremiumAccessAddon(plan, premiumAccessAddon);
+        AddPasswordManagerSeat(plan, additionalSeats);
+        AddAdditionalStorage(plan, additionalStorageGb);
 
-            if (premiumAccessAddon && plan.StripePremiumAccessPlanId != null)
-            {
-                Items.Add(new SubscriptionItemOptions
-                {
-                    Plan = plan.StripePremiumAccessPlanId,
-                    Quantity = 1
-                });
-            }
-
-            if (!string.IsNullOrWhiteSpace(taxInfo?.StripeTaxRateId))
-            {
-                DefaultTaxRates = new List<string> { taxInfo.StripeTaxRateId };
-            }
+        if (!string.IsNullOrWhiteSpace(taxInfo?.StripeTaxRateId))
+        {
+            DefaultTaxRates = new List<string> { taxInfo.StripeTaxRateId };
         }
     }
 
-    public class OrganizationPurchaseSubscriptionOptions : OrganizationSubscriptionOptionsBase
+    private void AddSecretsManagerSeat(Plan plan, int additionalSmSeats)
     {
-        public OrganizationPurchaseSubscriptionOptions(
-            Organization org, StaticStore.Plan plan,
-            TaxInfo taxInfo, int additionalSeats = 0,
-            int additionalStorageGb = 0, bool premiumAccessAddon = false) :
-            base(org, plan, taxInfo, additionalSeats, additionalStorageGb, premiumAccessAddon)
+        if (additionalSmSeats > 0 && plan.SecretsManager.StripeSeatPlanId != null)
         {
-            OffSession = true;
-            TrialPeriodDays = plan.TrialPeriodDays;
+            Items.Add(new SubscriptionItemOptions
+            {
+                Plan = plan.SecretsManager.StripeSeatPlanId,
+                Quantity = additionalSmSeats
+            });
         }
     }
 
-    public class OrganizationUpgradeSubscriptionOptions : OrganizationSubscriptionOptionsBase
+    private void AddPasswordManagerSeat(Plan plan, int additionalSeats)
     {
-        public OrganizationUpgradeSubscriptionOptions(
-            string customerId, Organization org,
-            StaticStore.Plan plan, TaxInfo taxInfo,
-            int additionalSeats = 0, int additionalStorageGb = 0,
-            bool premiumAccessAddon = false) :
-            base(org, plan, taxInfo, additionalSeats, additionalStorageGb, premiumAccessAddon)
+        if (additionalSeats > 0 && plan.PasswordManager.StripeSeatPlanId != null)
         {
-            Customer = customerId;
+            Items.Add(new SubscriptionItemOptions
+            {
+                Plan = plan.PasswordManager.StripeSeatPlanId,
+                Quantity = additionalSeats
+            });
         }
+    }
+
+    private void AddServiceAccount(Plan plan, int additionalServiceAccounts)
+    {
+        if (additionalServiceAccounts > 0 && plan.SecretsManager.StripeServiceAccountPlanId != null)
+        {
+            Items.Add(new SubscriptionItemOptions
+            {
+                Plan = plan.SecretsManager.StripeServiceAccountPlanId,
+                Quantity = additionalServiceAccounts
+            });
+        }
+    }
+
+    private void AddAdditionalStorage(Plan plan, int additionalStorageGb)
+    {
+        if (additionalStorageGb > 0)
+        {
+            Items.Add(new SubscriptionItemOptions
+            {
+                Plan = plan.PasswordManager.StripeStoragePlanId,
+                Quantity = additionalStorageGb
+            });
+        }
+    }
+
+    private void AddPremiumAccessAddon(Plan plan, bool premiumAccessAddon)
+    {
+        if (premiumAccessAddon && plan.PasswordManager.StripePremiumAccessPlanId != null)
+        {
+            Items.Add(new SubscriptionItemOptions
+            {
+                Plan = plan.PasswordManager.StripePremiumAccessPlanId,
+                Quantity = 1
+            });
+        }
+    }
+
+    private void AddPlanIdToSubscription(Plan plan)
+    {
+        if (plan.PasswordManager.StripePlanId != null)
+        {
+            Items.Add(new SubscriptionItemOptions
+            {
+                Plan = plan.PasswordManager.StripePlanId,
+                Quantity = 1
+            });
+        }
+    }
+}
+
+public class OrganizationPurchaseSubscriptionOptions : OrganizationSubscriptionOptionsBase
+{
+    public OrganizationPurchaseSubscriptionOptions(
+        Organization org,
+        Plan plan,
+        TaxInfo taxInfo,
+        int additionalSeats,
+        int additionalStorageGb,
+        bool premiumAccessAddon,
+        int additionalSmSeats,
+        int additionalServiceAccounts) :
+        base(org, plan, taxInfo, additionalSeats,
+            additionalStorageGb, premiumAccessAddon,
+            org.UseSecretsManager, additionalSmSeats,
+            additionalServiceAccounts)
+    {
+        OffSession = true;
+        TrialPeriodDays = plan.TrialPeriodDays;
+    }
+}
+
+public class OrganizationUpgradeSubscriptionOptions : OrganizationSubscriptionOptionsBase
+{
+    public OrganizationUpgradeSubscriptionOptions(
+        string customerId,
+        Organization org,
+        Plan plan,
+        OrganizationUpgrade upgrade) :
+        base(org, plan, upgrade.TaxInfo, upgrade.AdditionalSeats,
+            upgrade.AdditionalStorageGb, upgrade.PremiumAccessAddon,
+            upgrade.UseSecretsManager, upgrade.AdditionalSmSeats.GetValueOrDefault(),
+            upgrade.AdditionalServiceAccounts.GetValueOrDefault())
+    {
+        Customer = customerId;
     }
 }

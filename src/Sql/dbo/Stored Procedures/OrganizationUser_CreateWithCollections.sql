@@ -4,7 +4,7 @@
     @UserId UNIQUEIDENTIFIER,
     @Email NVARCHAR(256),
     @Key VARCHAR(MAX),
-    @Status TINYINT,
+    @Status SMALLINT,
     @Type TINYINT,
     @AccessAll BIT,
     @ExternalId NVARCHAR(300),
@@ -12,12 +12,13 @@
     @RevisionDate DATETIME2(7),
     @Permissions NVARCHAR(MAX),
     @ResetPasswordKey VARCHAR(MAX),
-    @Collections AS [dbo].[SelectionReadOnlyArray] READONLY
+    @Collections AS [dbo].[SelectionReadOnlyArray] READONLY,
+    @AccessSecretsManager BIT = 0
 AS
 BEGIN
     SET NOCOUNT ON
 
-    EXEC [dbo].[OrganizationUser_Create] @Id, @OrganizationId, @UserId, @Email, @Key, @Status, @Type, @AccessAll, @ExternalId, @CreationDate, @RevisionDate, @Permissions, @ResetPasswordKey
+    EXEC [dbo].[OrganizationUser_Create] @Id, @OrganizationId, @UserId, @Email, @Key, @Status, @Type, @AccessAll, @ExternalId, @CreationDate, @RevisionDate, @Permissions, @ResetPasswordKey, @AccessSecretsManager
 
     ;WITH [AvailableCollectionsCTE] AS(
         SELECT

@@ -1,47 +1,70 @@
-﻿using System;
-using System.Text.Json;
+﻿using System.Text.Json;
 using Bit.Core.Enums;
+using Bit.Core.Models.OrganizationConnectionConfigs;
 using Bit.Core.Utilities;
 
-namespace Bit.Core.Entities
+namespace Bit.Core.Entities;
+
+public class OrganizationConnection<T> : OrganizationConnection where T : IConnectionConfig
 {
-    public class OrganizationConnection<T> : OrganizationConnection where T : new()
+    public new T Config
     {
-        public new T Config
+        get => base.GetConfig<T>();
+        set => base.SetConfig(value);
+    }
+}
+
+public class OrganizationConnection : ITableObject<Guid>
+{
+    public Guid Id { get; set; }
+    public OrganizationConnectionType Type { get; set; }
+    public Guid OrganizationId { get; set; }
+    public bool Enabled { get; set; }
+    public string Config { get; set; }
+
+    public void SetNewId()
+    {
+        Id = CoreHelpers.GenerateComb();
+    }
+
+    public T GetConfig<T>() where T : IConnectionConfig
+    {
+        try
         {
-            get => base.GetConfig<T>();
-            set => base.SetConfig<T>(value);
+            return JsonSerializer.Deserialize<T>(Config);
+        }
+        catch (JsonException)
+        {
+            return default;
         }
     }
 
-    public class OrganizationConnection : ITableObject<Guid>
+    public void SetConfig<T>(T config) where T : IConnectionConfig
     {
-        public Guid Id { get; set; }
-        public OrganizationConnectionType Type { get; set; }
-        public Guid OrganizationId { get; set; }
-        public bool Enabled { get; set; }
-        public string Config { get; set; }
+        Config = JsonSerializer.Serialize(config);
+    }
 
-        public void SetNewId()
+    public bool Validate<T>(out string exception) where T : IConnectionConfig
+    {
+        if (!Enabled)
         {
-            Id = CoreHelpers.GenerateComb();
+            exception = $"Connection disabled for organization {OrganizationId}";
+            return false;
         }
 
-        public T GetConfig<T>() where T : new()
+        if (string.IsNullOrWhiteSpace(Config))
         {
-            try
-            {
-                return JsonSerializer.Deserialize<T>(Config);
-            }
-            catch (JsonException)
-            {
-                return default;
-            }
+            exception = $"No saved Connection config for organization {OrganizationId}";
+            return false;
         }
 
-        public void SetConfig<T>(T config) where T : new()
+        var config = GetConfig<T>();
+        if (config == null)
         {
-            Config = JsonSerializer.Serialize(config);
+            exception = $"Error parsing Connection config for organization {OrganizationId}";
+            return false;
         }
+
+        return config.Validate(out exception);
     }
 }

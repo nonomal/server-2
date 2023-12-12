@@ -8,7 +8,11 @@ SELECT
     PO.[Key],
     PO.[Settings],
     PO.[CreationDate],
-    PO.[RevisionDate]
+    PO.[RevisionDate],
+    (SELECT COUNT(1) FROM [dbo].[OrganizationUser] OU WHERE OU.OrganizationId = PO.OrganizationId AND OU.Status = 2) UserCount,
+    O.[Seats],
+    O.[Plan],
+    O.[Status]
 FROM
     [dbo].[ProviderOrganization] PO
 LEFT JOIN

@@ -205,7 +205,26 @@ services:
       - ../ca-certificates:/etc/bitwarden/ca-certificates
       - ../logs/key-connector:/etc/bitwarden/logs
     env_file:
+      - ../env/uid.env
       - ../env/key-connector.override.env
+    networks:
+      - default
+      - public
+{{/if}}
+{{#if EnableScim}}
+
+  scim:
+    image: bitwarden/scim:{{{CoreVersion}}}
+    container_name: bitwarden-scim
+    restart: always
+    volumes:
+      - ../core:/etc/bitwarden/core
+      - ../ca-certificates:/etc/bitwarden/ca-certificates
+      - ../logs/scim:/etc/bitwarden/logs
+    env_file:
+      - global.env
+      - ../env/uid.env
+      - ../env/global.override.env
     networks:
       - default
       - public

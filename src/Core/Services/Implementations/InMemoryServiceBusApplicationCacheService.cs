@@ -1,68 +1,67 @@
-﻿using System;
-using System.Threading.Tasks;
-using Bit.Core.Entities;
+﻿using Azure.Messaging.ServiceBus;
+using Bit.Core.AdminConsole.Entities;
+using Bit.Core.AdminConsole.Repositories;
 using Bit.Core.Enums;
 using Bit.Core.Repositories;
 using Bit.Core.Settings;
 using Bit.Core.Utilities;
-using Microsoft.Azure.ServiceBus;
 
-namespace Bit.Core.Services
+namespace Bit.Core.Services;
+
+public class InMemoryServiceBusApplicationCacheService : InMemoryApplicationCacheService, IApplicationCacheService
 {
-    public class InMemoryServiceBusApplicationCacheService : InMemoryApplicationCacheService, IApplicationCacheService
+    private readonly ServiceBusClient _serviceBusClient;
+    private readonly ServiceBusSender _topicMessageSender;
+    private readonly string _subName;
+
+    public InMemoryServiceBusApplicationCacheService(
+        IOrganizationRepository organizationRepository,
+        IProviderRepository providerRepository,
+        GlobalSettings globalSettings)
+        : base(organizationRepository, providerRepository)
     {
-        private readonly TopicClient _topicClient;
-        private readonly string _subName;
+        _subName = CoreHelpers.GetApplicationCacheServiceBusSubscriptionName(globalSettings);
+        _serviceBusClient = new ServiceBusClient(globalSettings.ServiceBus.ConnectionString);
+        _topicMessageSender = new ServiceBusClient(globalSettings.ServiceBus.ConnectionString).CreateSender(globalSettings.ServiceBus.ApplicationCacheTopicName);
+    }
 
-        public InMemoryServiceBusApplicationCacheService(
-            IOrganizationRepository organizationRepository,
-            IProviderRepository providerRepository,
-            GlobalSettings globalSettings)
-            : base(organizationRepository, providerRepository)
+    public override async Task UpsertOrganizationAbilityAsync(Organization organization)
+    {
+        await base.UpsertOrganizationAbilityAsync(organization);
+        var message = new ServiceBusMessage
         {
-            _subName = CoreHelpers.GetApplicationCacheServiceBusSubcriptionName(globalSettings);
-            _topicClient = new TopicClient(globalSettings.ServiceBus.ConnectionString,
-                globalSettings.ServiceBus.ApplicationCacheTopicName);
-        }
-
-        public override async Task UpsertOrganizationAbilityAsync(Organization organization)
-        {
-            await base.UpsertOrganizationAbilityAsync(organization);
-            var message = new Message
+            Subject = _subName,
+            ApplicationProperties =
             {
-                Label = _subName,
-                UserProperties =
-                {
-                    { "type", (byte)ApplicationCacheMessageType.UpsertOrganizationAbility },
-                    { "id", organization.Id },
-                }
-            };
-            var task = _topicClient.SendAsync(message);
-        }
+                { "type", (byte)ApplicationCacheMessageType.UpsertOrganizationAbility },
+                { "id", organization.Id },
+            }
+        };
+        var task = _topicMessageSender.SendMessageAsync(message);
+    }
 
-        public override async Task DeleteOrganizationAbilityAsync(Guid organizationId)
+    public override async Task DeleteOrganizationAbilityAsync(Guid organizationId)
+    {
+        await base.DeleteOrganizationAbilityAsync(organizationId);
+        var message = new ServiceBusMessage
         {
-            await base.DeleteOrganizationAbilityAsync(organizationId);
-            var message = new Message
+            Subject = _subName,
+            ApplicationProperties =
             {
-                Label = _subName,
-                UserProperties =
-                {
-                    { "type", (byte)ApplicationCacheMessageType.DeleteOrganizationAbility },
-                    { "id", organizationId },
-                }
-            };
-            var task = _topicClient.SendAsync(message);
-        }
+                { "type", (byte)ApplicationCacheMessageType.DeleteOrganizationAbility },
+                { "id", organizationId },
+            }
+        };
+        var task = _topicMessageSender.SendMessageAsync(message);
+    }
 
-        public async Task BaseUpsertOrganizationAbilityAsync(Organization organization)
-        {
-            await base.UpsertOrganizationAbilityAsync(organization);
-        }
+    public async Task BaseUpsertOrganizationAbilityAsync(Organization organization)
+    {
+        await base.UpsertOrganizationAbilityAsync(organization);
+    }
 
-        public async Task BaseDeleteOrganizationAbilityAsync(Guid organizationId)
-        {
-            await base.DeleteOrganizationAbilityAsync(organizationId);
-        }
+    public async Task BaseDeleteOrganizationAbilityAsync(Guid organizationId)
+    {
+        await base.DeleteOrganizationAbilityAsync(organizationId);
     }
 }
